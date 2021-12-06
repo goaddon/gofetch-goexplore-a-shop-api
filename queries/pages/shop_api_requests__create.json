@@ -1,0 +1,32 @@
+{
+  "webshops": {
+    "klass": "webshops",
+    "query": {
+      "_id": "{{ _id }}"
+    },
+    "projection": {
+      "_id": 1,
+      "relay_id": 1,
+      "company_id": 1
+    }
+  },
+  "tickets": {
+    "klass": "tickets",
+    "query": {
+      "webshop_id": "{{ webshop_id }}",
+      "superuser_id": "{{ user_id }}",
+      "status": {
+        "$in": "{{ statuses }}"
+      }
+    }
+  },
+  "documents": {
+    "klass": "{{ resource_name }}",
+    "query": {
+      "_id": "{{ _id }}"
+    },
+    "projection": {
+      "webshop_id": 1
+    }
+  }
+}

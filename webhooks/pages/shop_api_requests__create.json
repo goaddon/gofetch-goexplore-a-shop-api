@@ -1,0 +1,36 @@
+{
+  "get_shop_api": {
+    "method": "get",
+    "url": "{{ url }}",
+    "headers": {
+      "Authorization": "{{ token }}",
+      "Content-Type": "application/json"
+    }
+  },
+  "patch_shop_api": {
+    "method": "patch",
+    "url": "{{ url }}",
+    "headers": {
+      "Authorization": "{{ token }}",
+      "Content-Type": "application/json"
+    },
+    "body": "{{ body }}"
+  },
+  "post_shop_api": {
+    "method": "post",
+    "url": "{{ url }}",
+    "headers": {
+      "Authorization": "{{ token }}",
+      "Content-Type": "application/json"
+    },
+    "body": "{{ body }}"
+  },
+  "delete_shop_api": {
+    "method": "delete",
+    "url": "{{ url }}",
+    "headers": {
+      "Authorization": "{{ token }}",
+      "Content-Type": "application/json"
+    }
+  }
+}

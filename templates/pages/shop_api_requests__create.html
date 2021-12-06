@@ -1,0 +1,238 @@
+{% if account != nil %}
+
+  {% assign document_http_methods = "patch delete" | split: " " %}
+
+  {% if document_http_methods contains params.http_method and params.document_id == nil %}
+
+    {"status": "422", "error": "{{ l.errors.no_document_id }}"}
+
+  {% else %}
+
+    {% assign error           = l.errors.no_access %}
+    {% assign webshop_id      = params.webshop_id %}
+    {% assign webshops_query  = "webshops" | db_find: _id: webshop_id %}
+    {% assign webshop         = webshops_query.results.first %}
+
+    {% if webshop == nil %}
+
+      {% assign error = l.errors.no_webshop %}
+
+    {% else %}
+
+      {% if user.superuser %}
+        {% if user.superuser_level == 1 %}
+
+          {% assign error = nil %}
+
+        {% else %}
+
+          {% if user.webshop_relay_ids != nil and user.webshop_relay_ids contains webshop.relay_id %}
+
+            {% assign error = nil %}
+
+          {% else %}
+
+            {% if user.closed_ticket_relay_ids != nil and user.closed_ticket_relay_ids.size > 0 %}
+
+              {% assign permitted_relay_ids = user.closed_ticket_relay_ids %}
+
+            {% elsif user.ticket_relay_ids != nil and user.ticket_relay_ids.size > 0 %}
+
+              {% assign permitted_relay_ids = user.ticket_relay_ids %}
+
+            {% endif %}
+
+            {% if permitted_relay_ids != nil and permitted_relay_ids contains webshop.relay_id %}
+
+              {% assign ticket_statuses = "opened escalated" | split: " " %}
+              {% assign tickets_query   = "tickets" | db_count: webshop_id: webshop._id, user_id: user._id, statuses: ticket_statuses %}
+
+              {% if tickets_query.results_count != nil and tickets_query.results_count > 0 %}    
+
+                {% assign error = nil %}
+
+              {% endif %}
+            {% endif %}
+          {% endif %}
+        {% endif %}
+      {% elsif project.secrets.user_shop_api_endpoints != nil %}
+
+        {% assign user_shop_api_endpoints = project.secrets.user_shop_api_endpoints | split: "," %}
+        {% capture resource_endpoint %}{{ params.resource_name }}__{{ params.endpoint_name }}{% endcapture %}
+
+        {% if user_shop_api_endpoints contains "*" or user_shop_api_endpoints contains resource_endpoint %}
+
+          {% assign error = nil %}
+
+        {% endif %}
+      {% endif %}
+    {% endif %}
+
+    {% if error != nil %}
+
+      {"status": "422", "error": "{{ error }}"}
+
+    {% else %}
+
+      {% assign gofetch_shop_api_url = project.secrets.gofetch_shop_api_url %}
+
+      {% if gofetch_shop_api_url != nil and gofetch_shop_api_url != "" %}
+
+        {% assign forbidden_body_tag_keys = "webshop_id unfiltered_response bypass_db" | split: " " %}
+        {% assign forbidden_body_tags     = "" | split: " " %}
+
+        {% if params.body != nil %}
+          {% for kv in params.body %}
+            {% for forbidden_body_tag_key in forbidden_body_tag_keys %}
+              {% if kv[0] == forbidden_body_tag_key %}
+
+                {% assign forbidden_body_tags = forbidden_body_tags | push_to_array: forbidden_body_tag_key %}
+
+              {% endif %}
+            {% endfor %}
+          {% endfor %}
+        {% endif %}
+
+        {% if forbidden_body_tags.size > 0 %}
+
+          {% assign forbidden_body_tags = forbidden_body_tags | join: ', ' %}
+
+          {"status": "422", "error": "{{ l.errors.forbidden_body_tags }}: {{ forbidden_body_tags }}"}
+
+        {% else %}
+
+          {% if params.shop_api_version != nil and params.shop_api_version != "" %}
+
+            {% assign shop_api_version = params.shop_api_version %}
+
+          {% else %}
+
+            {% assign shop_api_version = "v1" %}
+
+          {% endif %}
+
+          {% capture shop_api_url %}{{ session.protocol }}{{ gofetch_shop_api_url }}/shop_api/{{ shop_api_version }}/{{ params.resource_name }}{% endcapture %}
+
+          {% if params.url_params != nil and params.url_params.size > 0 %}
+
+            {% assign url_params = params.url_params %}
+
+          {% else %}
+
+            {% assign url_params = "" | split: " " %}
+
+          {% endif %}
+
+          {% capture webshop_id_param %}webshop_id={{ webshop._id }}{% endcapture %}
+
+          {% assign url_params = url_params | push_to_array: webshop_id_param %}
+
+          {% if user.superuser and params.unfiltered_response %}
+
+            {% assign url_params = url_params | push_to_array: "unfiltered_response=true" %}
+
+          {% endif %}
+
+          {% if user.superuser and params.bypass_db %}
+
+            {% assign url_params = url_params | push_to_array: "bypass_db=true" %}
+
+          {% elsif params.resource_name == "webshops" and params.document_id == webshop._id %}
+
+            {% assign document        = webshop %}
+
+          {% elsif params.document_id != nil %}
+
+            {% assign documents_query = "documents" | db_find: resource_name: params.resource_name, _id: params.document_id %}
+            {% assign document        = documents_query.results.first %}
+
+          {% endif %}
+
+          {% if documents_query != nil and document == nil %}
+
+            {"status": "422", "error": "{{ l.errors.no_document_found }}"}
+
+          {% elsif documents_query != nil and document != nil and document.webshop_id != webshop._id %}
+
+            {"status": "422", "error": "{{ l.errors.document_webshop_id_mismatch }}"}
+
+          {% else %}
+
+            {% if document != nil %}
+
+              {% capture shop_api_url %}{{ shop_api_url }}/{{ document._id }}{% endcapture %}
+
+            {% elsif params.document_id != nil %}
+
+              {% capture shop_api_url %}{{ shop_api_url }}/{{ params.document_id }}{% endcapture %}
+
+            {% endif %}
+
+            {% assign simple_endpoints = "create update destroy index show" | split: " " %}
+
+            {% unless simple_endpoints contains params.endpoint_name %}
+
+              {% capture shop_api_url %}{{ shop_api_url }}/{{ params.endpoint_name }}{% endcapture %}
+
+            {% endunless %}
+
+            {% assign url_params = url_params | join: "&" %}
+
+            {% capture shop_api_url %}{{ shop_api_url }}?{{ url_params }}{% endcapture %}
+
+            {% case params.http_method %}
+              {% when "get" %}
+
+                {% assign response = "get_shop_api" | webhook: url: shop_api_url, token: project.secrets.gofetch_shop_api_token %}
+
+              {% when "delete" %}
+
+                {% assign response = "delete_shop_api" | webhook: url: shop_api_url, token: project.secrets.gofetch_shop_api_token %}
+
+              {% when "patch" %}
+
+                {% assign response = "patch_shop_api" | webhook: url: shop_api_url, token: project.secrets.gofetch_shop_api_token, body: params.body %}
+
+              {% when "post" %}
+
+                {% assign response = "post_shop_api" | webhook: url: shop_api_url, token: project.secrets.gofetch_shop_api_token, body: params.body %}
+
+            {% endcase %}
+
+            {% if response == nil %}
+
+              {"status": "500", "error": "{{ l.no_response }}"}
+
+            {% elsif response.error != nil %}
+
+              {"status": "500", "error": "{{ response.error }}"}
+
+            {% else %}
+
+              {% if response.body != nil %}
+
+                {% assign response_json = response.body | hash_to_json %}
+
+              {% endif %}
+
+              {% if response_json == nil or response_json == "" %}
+
+                {% assign response_json = response.body %}
+
+              {% endif %}
+
+              {"status": "{{ response.code }}", "response_json": {{ response_json }}}
+
+            {% endif %}
+
+          {% endif %}
+        {% endif %}
+
+      {% else %}
+
+        {"status": "{{ response.code }}", "error": "{{ l.no_gofetch_shop_api_url }}"}
+
+      {% endif %}
+    {% endif %}
+  {% endif %}
+{% endif %}
