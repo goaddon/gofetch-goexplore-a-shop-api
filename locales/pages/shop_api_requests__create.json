@@ -10,7 +10,8 @@
       "forbidden_body_tags": "Please remove the following keys from your request body",
       "no_access": "You are not allowed to make this request to the Shop API",
       "no_webshop": "No webshop found",
-      "no_document_id": "No id provided"
+      "no_document_id": "No id provided",
+      "wrong_account": "This webshop does not belong to the account you are following"
     }
   }
 }

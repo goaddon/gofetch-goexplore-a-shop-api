@@ -17,6 +17,10 @@
 
       {% assign error = l.errors.no_webshop %}
 
+    {% elsif webshop.company_id != account._id %}
+
+      {% assign error = l.errors.wrong_account %}
+
     {% else %}
 
       {% if user.superuser %}
